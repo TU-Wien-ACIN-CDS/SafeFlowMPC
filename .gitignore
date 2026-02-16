@@ -19,6 +19,6 @@ data
 *egg-info
 MUJOCO_LOG.TXT
 mujoco_model/assets
-mujoco_model/mujoco_model.xml
+mujoco_model/*.xml
 acados_code
 __pycache__
