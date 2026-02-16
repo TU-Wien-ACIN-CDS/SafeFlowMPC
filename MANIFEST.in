@@ -1,0 +1,3 @@
+global-include *.so
+include safe_flow_mpc/*
+recursive-include safe_flow_mpc *
