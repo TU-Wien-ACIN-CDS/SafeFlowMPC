@@ -1,4 +1,7 @@
+import os
+
 import torch
+from huggingface_hub import hf_hub_download
 
 from safe_flow_mpc.Models import EMA, TemporalUnet
 from safe_flow_mpc.SafeFlowMPC import PlannerConfig
@@ -30,8 +33,25 @@ class FlowMatchingField:
 
     def _load_weights(self) -> None:
         """Load pre-trained model weights."""
-        print(f"Loading {self.config.model_path}...")
-        checkpoint = torch.load(f"{self.config.model_path}.pth", weights_only=True)
+        try:
+            # Try loading locally
+            print(
+                f"Attempting to load {self.config.model_path}{self.config.model_name} locally..."
+            )
+            checkpoint = torch.load(
+                f"{self.config.model_path}{self.config.model_name}.pth",
+                weights_only=True,
+            )
+        except FileNotFoundError:
+            # If not found, download from Hugging Face Hub
+            print("Local weights not found. Downloading from Hugging Face Hub...")
+            model_path = hf_hub_download(
+                repo_id="ThiesOelerich/SafeFlowMPC",
+                filename=f"{self.config.model_name}.pth",
+                repo_type="model",
+            )
+            checkpoint = torch.load(model_path, weights_only=True)
+
         self.velocity_field.load_state_dict(checkpoint["model"])
         self.ema.load_state_dict(checkpoint["ema_model"])
         self.ema.ema_model.to(self.device)

@@ -97,7 +97,7 @@ class SafeFlowMPC:
         # Initialize mujoco
         # self.model = mujoco.MjModel.from_xml_path("mujoco_model/mujoco_env.xml")
         self.model = mujoco.MjModel.from_binary_path(
-            "mujoco_model/mujoco_env_inference.mjb"
+            str(Path.cwd()) + "/mujoco_model/mujoco_env_inference.mjb"
         )
         self.data = mujoco.MjData(self.model)
         self.viewer = mujoco.viewer.launch_passive(self.model, self.data)
@@ -130,10 +130,6 @@ class SafeFlowMPC:
             print("Using CPU")
             return "cpu"
 
-    def set_handover_data(self, p_receiver):
-        print("Setting handover data...")
-        self.p_receiver = p_receiver
-
     def initialize_safety_filters(self) -> None:
         """Initialize safety filtering components."""
         self.safety_filter = SafetyFilterAcados(
@@ -141,7 +137,6 @@ class SafeFlowMPC:
             smooth=self.config.smooth,
             use_term=self.config.use_term,
             use_sets=self.config.use_sets,
-            handover=self.config.handover,
             obstacle_manager=self.obstacle_manager,
             build=self.config.build,
             workspace_max=self.workspace_max,
@@ -181,45 +176,23 @@ class SafeFlowMPC:
         h = self.robot_model.hom_transform_endeffector(self.state.q)
         p0 = h[:3, 3]
         r0 = h[:3, :3].flatten()
-        if self.config.handover:
-            if self.config.experiment:
-                p_receiver_prev_tensors = [
-                    torch.Tensor(x).to(self.device) for x in self.p_receiver
-                ]
-            else:
-                idx_prev = [self.state.timestep - x for x in reversed(range(10))]
-                idx_prev = np.maximum(idx_prev, 0)
-                idx_prev = np.minimum(idx_prev, self.p_receiver.shape[0] - 1)
-                p_receiver_prev_tensors = [
-                    torch.Tensor(x).to(self.device)
-                    for x in self.p_receiver[idx_prev, :]
-                ]
-            condition = torch.cat(
-                q_prev_tensors
-                + [torch.Tensor(p0).to(self.device)]
-                + [torch.Tensor(r0).to(self.device)]
-                + p_receiver_prev_tensors
-            )
-        else:
-            # Target end-effector pose
-            r_final = R.from_rotvec(self.p_goal[3:]).as_matrix().flatten()
+        # Target end-effector pose
+        r_final = R.from_rotvec(self.p_goal[3:]).as_matrix().flatten()
 
-            # Collision sphere positions
-            p_cols = [
-                torch.Tensor(self.robot_model.fk_pos_col(self.state.q, i)).to(
-                    self.device
-                )
-                for i in range(7)
-            ]
+        # Collision sphere positions
+        p_cols = [
+            torch.Tensor(self.robot_model.fk_pos_col(self.state.q, i)).to(self.device)
+            for i in range(7)
+        ]
 
-            condition = torch.cat(
-                q_prev_tensors
-                + [torch.Tensor(p0).to(self.device)]
-                + [torch.Tensor(r0).to(self.device)]
-                + [torch.Tensor(self.p_goal[:3]).to(self.device)]
-                + [torch.Tensor(r_final).to(self.device)]
-                + p_cols
-            )
+        condition = torch.cat(
+            q_prev_tensors
+            + [torch.Tensor(p0).to(self.device)]
+            + [torch.Tensor(r0).to(self.device)]
+            + [torch.Tensor(self.p_goal[:3]).to(self.device)]
+            + [torch.Tensor(r_final).to(self.device)]
+            + p_cols
+        )
 
         return condition
 
@@ -579,16 +552,6 @@ class SafeFlowMPC:
             .numpy()
             .reshape((self.config.n_horizon, self.config.n_out))
         )
-
-        if self.config.handover:
-            if x_np[0, 7] < 0.1 and self.t_gripper_open == np.inf:
-                print("Opening Gripper")
-                self.t_gripper_open = self.state.timestep
-                # print(
-                #     np.linalg.norm(x_np[0, 8:11] - self.robot_model.fk_pos(x_np[0, :7]))
-                # )
-            # p_human = x_np[:, 8:11]
-            # self.safety_filter.set_handover_data(p_human)
 
         # Update state
         next_q = x_np[self.config.n_actions, :7]

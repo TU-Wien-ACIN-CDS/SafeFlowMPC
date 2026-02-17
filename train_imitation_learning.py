@@ -4,6 +4,7 @@ import warnings
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
+from datasets import load_dataset
 from flow_matching.path import AffineProbPath
 from flow_matching.path.scheduler import CondOTScheduler
 
@@ -32,22 +33,11 @@ batch_size = 1024
 # iterations = 25001
 print_every = 500
 use_vpsto = True
-use_handover = True if not use_vpsto else False
-model_name = (
-    f"model_unsafe{'_vpsto' if use_vpsto else ''}{'_handover' if use_handover else ''}"
-)
-if use_handover:
-    path_files = "data/dynamic_handover_dataset/data/"
-else:
-    path_files = "data/"
-
-data = np.load(
-    path_files
-    + f"imitation_trajs{'_vpsto_unsafe' if use_vpsto else ''}{'_handover_unsafe' if use_handover else ''}.npz",
-    allow_pickle=True,
-)
-trajectories = torch.Tensor(data["trajectories"]).to(device)
-conditional_data = torch.Tensor(data["c_data1"]).to(device)
+model_name = f"model_unsafe_vpsto"
+dataset = load_dataset("ThiesOelerich/SafeFlowMPC_pretrain", split="train")
+dataset.set_format("numpy")
+trajectories = torch.Tensor(dataset["trajectories"]).to(device)
+conditional_data = torch.Tensor(dataset["conditional_data"]).to(device)
 
 
 def get_train_data(batch_size: int = 200, device: str = "cpu"):
@@ -59,12 +49,8 @@ def get_train_data(batch_size: int = 200, device: str = "cpu"):
 
 
 n_horizon = 16
-if use_handover:
-    n_out = 8
-    cond_dim = 225 - n_horizon * 7 - 1
-else:
-    n_out = 7
-    cond_dim = 228 - n_horizon * 7 - 1
+n_out = 7
+cond_dim = 228 - n_horizon * 7 - 1
 velocity_field = TemporalUnet(
     horizon=n_horizon,
     transition_dim=n_out,

@@ -20,7 +20,6 @@ def setup_solver_and_integrator(
     nr_joints: int,
     smooth: bool,
     use_term: bool,
-    handover: bool,
     creation_mode: str,
 ) -> AcadosOcpSolver:
     robot_model = RobotModel()
@@ -131,16 +130,6 @@ def setup_solver_and_integrator(
         b_set = ca.SX.sym("param", max_set_size)
         params = ca.vertcat(params, a_set.reshape((-1, 1)), b_set)
         set_constraints = ca.vertcat(set_constraints, a_set @ p - b_set)
-    # if handover:
-    #     kappa = 10.0**2
-    #     p = robot_model.fk_pos(q)
-    #     v = robot_model.velocity_ee(q, dq)
-    #     p_human = ca.SX.sym("pos_human", 3)
-    #     v_human = ca.SX.sym("vel_human", 3)
-    #     params = ca.vertcat(params, p_human, v_human)
-    #     set_constraints = ca.vertcat(
-    #         set_constraints, ca.sumsqr(v - v_human) - kappa * ca.sumsqr(p - p_human)
-    #     )
     nh = set_constraints.size()[0]
     model.p = params
     # model.p_global = params
@@ -151,31 +140,12 @@ def setup_solver_and_integrator(
     ocp.constraints.idxsh = np.array(range(nh))
     ocp.cost.Zl = np.ones(nh)
     ocp.cost.Zu = np.ones(nh)
-    if handover:
-        ocp.cost.zl = 100 * np.ones(nh)
-        ocp.cost.zu = 100 * np.ones(nh)
-    else:
-        ocp.cost.zl = 1000 * np.ones(nh)
-        ocp.cost.zu = 1000 * np.ones(nh)
-    # if handover:
-    #     ocp.cost.zl[-6:] = 1
-    #     ocp.cost.zu[-6:] = 1
+    ocp.cost.zl = 1000 * np.ones(nh)
+    ocp.cost.zu = 1000 * np.ones(nh)
     ocp.constraints.Jsh = np.eye(nh, dtype=int)
 
     # Terminal constraint
     if use_term:
-        if handover:
-            p = robot_model.fk_pos(q)
-            ocp.model.con_h_expr_e = p[1] + 0.5
-            ocp.constraints.lh_e = np.zeros(1)
-            ocp.constraints.uh_e = ACADOS_INFTY * np.ones(1)
-            ocp.constraints.idxsh_e = np.array(range(1))
-            ocp.cost.Zl_e = np.ones(1)
-            ocp.cost.Zu_e = np.ones(1)
-            ocp.cost.zl_e = 10 * np.ones(1)
-            ocp.cost.zu_e = 10 * np.ones(1)
-            ocp.constraints.Jsh_e = np.eye(1, dtype=int)
-
         ocp.cost.Vx_e = np.eye(nx)[nr_joints:, :]
         ocp.cost.W_e = 10 * np.eye(nx - nr_joints)
         ocp.cost.yref_e = np.zeros((nx - nr_joints,))
@@ -247,7 +217,6 @@ class SafetyFilterAcados:
         smooth=False,
         use_term=False,
         use_sets=False,
-        handover=False,
         obstacle_manager=None,
         build=True,
         workspace_max=[1.3, 1.3, 1.5],
@@ -263,7 +232,6 @@ class SafetyFilterAcados:
             nr_joints,
             smooth=smooth,
             use_term=use_term,
-            handover=handover,
             creation_mode=creation_mode,
         )
         self.N = N
@@ -271,7 +239,6 @@ class SafetyFilterAcados:
         self.use_sets = use_sets
         self.dt = dt
         self.robot_model = RobotModel()
-        self.handover = handover
         self.p_human = 100 * np.ones((self.N, 3))
         self.v_human = np.zeros((self.N, 3))
 
@@ -300,10 +267,6 @@ class SafetyFilterAcados:
         self.ddq_last = np.zeros((self.nr_joints, self.N + 1))
         self.dddq_last = np.zeros((self.nr_joints, self.N + 1))
         self.updated = True
-
-    def set_handover_data(self, p_human):
-        self.p_human = p_human
-        self.v_human = np.diff(p_human, axis=0) / self.dt
 
     def compute_sets(self, q_set0, q_setf):
         nr_p_col = len(self.robot_model.col_ids)
@@ -390,17 +353,8 @@ class SafetyFilterAcados:
         # Set parameters
         if self.use_sets:
             for i in range(1, self.N):
-                if self.handover:
-                    # human_params = np.hstack(
-                    #     (self.p_human[i, :], self.v_human[min(i, self.N - 2), :])
-                    # )
-                    # self.ocp_solver.set(
-                    #     i, "p", np.hstack((self.params_sets, human_params))
-                    # )
-                    self.ocp_solver.set(i, "p", self.params_sets)
-                else:
-                    # self.ocp_solver.set(i, "p", self.params_sets[i])
-                    self.ocp_solver.set(i, "p", self.params_sets)
+                # self.ocp_solver.set(i, "p", self.params_sets[i])
+                self.ocp_solver.set(i, "p", self.params_sets)
 
         time_start = time.perf_counter()
         status = self.ocp_solver.solve()
@@ -411,14 +365,9 @@ class SafetyFilterAcados:
         # self.ocp_solver.print_statistics()  # encapsulates: stat = ocp_solver.get_stats("statistics")
         # qp_iter = self.ocp_solver.get_stats("qp_iter")
         # print(f"acados returned status {status} with {sqp_iter} sqp iterations.")
-        if self.handover:
-            max_slack = np.max(
-                np.array([self.ocp_solver.get(k, "su")[:-6] for k in range(1, self.N)])
-            )
-        else:
-            max_slack = np.max(
-                np.array([self.ocp_solver.get(k, "su") for k in range(1, self.N)])
-            )
+        max_slack = np.max(
+            np.array([self.ocp_solver.get(k, "su") for k in range(1, self.N)])
+        )
         if update:
             self.updated = False
         if max_slack > 1e-3 or status > 0:

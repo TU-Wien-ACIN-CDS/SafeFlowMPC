@@ -5,6 +5,7 @@ from glob import glob
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
+from datasets import load_dataset
 from flow_matching.path import AffineProbPath
 from flow_matching.path.scheduler import CondOTScheduler
 
@@ -39,15 +40,13 @@ use_q_goal = False
 use_weights = False
 use_term = True
 use_vpsto = True
-use_handover = False
-model_name = f"model{'_q' if use_q_goal else ''}{'_term' if use_term else ''}{'_vpsto' if use_vpsto else ''}{'_handover' if use_handover else ''}"
+model_name = f"model{'_q' if use_q_goal else ''}{'_term' if use_term else ''}vpsto"
 print(model_name)
 train = True
 n_horizon = 16
-if use_handover:
-    path_files = "data/dynamic_handover_dataset/data/"
-else:
-    path_files = "data/"
+
+dataset = load_dataset("ThiesOelerich/SafeFlowMPC", split="train")
+dataset.set_format("numpy")
 
 weights = 1 / np.array(
     [
@@ -72,39 +71,23 @@ weights = 1 / np.array(
 
 
 def get_train_data(batch_size: int = 2, device: str = "cpu", idx=None):
-    if idx is None:
-        nr_files = len(
-            glob(
-                f"{path_files}imitation_trajs_{'_handover' if use_handover else 'vpsto'}_term_*.npz"
-            )
-        )
-        idx = torch.randint(0, nr_files, (1,))
-    data = np.load(
-        path_files
-        + f"imitation_trajs{'_vpsto' if use_vpsto else ''}{'_handover' if use_handover else ''}{'_term' if use_term else ''}_{int(idx)}.npz",
-    )
-    p = torch.Tensor(data["trajectories"]).to(device).float()
-    if use_q_goal:
-        c_data = torch.Tensor(data["c_data3"]).to(device).float()
-    else:
-        c_data = torch.Tensor(data["c_data1"]).to(device).float()
-    samples = torch.Tensor(data["samples"]).to(device).float()
-    dsamples = torch.Tensor(data["dsamples"]).to(device).float()
-    samples = torch.transpose(samples, 3, 4)
-    dsamples = torch.transpose(dsamples, 3, 4)
-    samples = torch.flatten(samples, 3, 4)
-    dsamples = torch.flatten(dsamples, 3, 4)
-    t_samples = torch.Tensor(data["t_samples"]).to(device).float()
+    # Randomly sample indices
+    indices = np.random.randint(0, len(dataset), size=batch_size)
+
+    batch = dataset.select(indices)
+
+    # Convert to torch tensors
+    p = torch.tensor(batch["trajectories"], device=device).float()
+    c_data = torch.tensor(batch["c_data"], device=device).float()
+    samples = torch.tensor(batch["samples"], device=device).float()
+    dsamples = torch.tensor(batch["dsamples"], device=device).float()
+    t_samples = torch.tensor(batch["t_samples"], device=device).float()
 
     return p, c_data, samples, dsamples, t_samples
 
 
-if use_handover:
-    n_out = 8
-    cond_dim = 225 - n_horizon * 7 - 1
-else:
-    n_out = 7
-    cond_dim = 228 - n_horizon * 7 - 1
+n_out = 7
+cond_dim = 228 - n_horizon * 7 - 1
 velocity_field = TemporalUnet(
     horizon=n_horizon,
     transition_dim=n_out,
@@ -116,7 +99,7 @@ ema = EMA(velocity_field)
 
 if finetuning:
     print("Finetuning")
-    model_name_ft = f"model_unsafe{'_q' if use_q_goal else ''}{'_vpsto' if use_vpsto else ''}{'_handover' if use_handover else ''}"
+    model_name_ft = f"model_unsafe_vpsto"
     print(model_name_ft)
     checkpoint = torch.load(f"checkpoints/{model_name_ft}.pth")
     velocity_field.load_state_dict(checkpoint["model"])
@@ -170,14 +153,6 @@ if train:
                 t_sampled = t_samples[idx0, idx_dist, idx_t]
 
                 x_t = x_t.reshape(-1, n_horizon, 7)
-                if use_handover:
-                    x_1_rem = trajs.reshape(-1, n_horizon, n_out)[:, :, 7:]
-                    x_0_rem = torch.randn_like(x_1_rem)
-                    x_t_rem = x_0_rem + t[:, None, None] * (x_1_rem - x_0_rem)
-                    x_t = torch.cat((x_t, x_t_rem), dim=2)
-                    dx_t_rem = x_1_rem - x_0_rem
-                    dx_t = torch.cat((dx_t.reshape(-1, n_horizon, 7), dx_t_rem), dim=2)
-                    dx_t = dx_t.reshape((-1, n_horizon * n_out))
                 dxc = velocity_field(x_t, t_sampled, c_data)
                 dxc = dxc.reshape((x_t.shape[0], -1))
 

@@ -18,9 +18,6 @@ class PlannerConfig:
     real_time: bool = False
     experiment: bool = False
 
-    # Do handover experiment
-    handover: bool = False
-
     # Network parameters
     n_horizon: int = 16
     n_actions: int = 1
@@ -53,16 +50,11 @@ class PlannerConfig:
         if not self.use_safety_filter:
             self.use_safe_dist = False
 
-        if self.handover:
-            self.cond_dim = 225 - self.n_horizon * 7 - 1
-            self.n_out = 8
-            tail = "handover"
-        else:
-            self.cond_dim = 228 - self.n_horizon * 7 - 1
-            self.n_out = 7
-            tail = "vpsto"
+        self.cond_dim = 228 - self.n_horizon * 7 - 1
+        self.n_out = 7
+        tail = "vpsto"
         if self.use_safe_model:
             self.model_name = f"model{'_q' if not self.use_cart_goal else ''}{'_term' if self.use_term else ''}_{tail}"
         else:
             self.model_name = f"model_unsafe_{tail}"
-        self.model_path = self.model_path + self.model_name
+        self.model_path = self.model_path
