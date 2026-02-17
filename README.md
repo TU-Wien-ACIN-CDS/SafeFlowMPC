@@ -1,6 +1,6 @@
 # SafeFlowMPC: Predictive and Safe Trajectory Planning for Robot Manipulators with Learning-based Policies
 
-Implementation of the SafeFlowMPC (published at ICRA 2026). See here [https://www.acin.tuwien.ac.at/en/42d6/](https://www.acin.tuwien.ac.at/en/42d6/) for a video of real-world experiments.
+Implementation of SafeFlowMPC [https://arxiv.org/abs/2602.12794](https://arxiv.org/abs/2602.12794) (published at ICRA 2026). See here [https://www.acin.tuwien.ac.at/en/42d6/](https://www.acin.tuwien.ac.at/en/42d6/) for a video of real-world experiments.
 
 This repository includes the training and inference code for the first experiment in the paper.
 If you find any mistakes, bugs, or have further suggestions, feel free to reach out or create an issue.
