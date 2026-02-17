@@ -5,6 +5,9 @@ Implementation of the SafeFlowMPC (published at ICRA 2026). See here [https://ww
 This repository includes the training and inference code for the first experiment in the paper.
 If you find any mistakes, bugs, or have further suggestions, feel free to reach out or create an issue.
 
+![manifold](pics/manifold.png)
+![robot_movement](pics/robot_movement.png)
+
 ## Dependencies
 
 The implementation uses [Acados](https://docs.acados.org/) to solve a non-convex optimization problem in each flow matching step. Please follow their website for the installation instructions.
