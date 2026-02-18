@@ -1,0 +1,12 @@
+numpy==2.3.5
+scipy==1.16.3
+scikit-learn==1.8.0
+torch==2.10.0
+einops==0.8.2
+pycddlib==3.0.2
+cvxpy==1.8.1
+pin==3.8.0
+mujoco==3.4.0
+flow_matching==1.0.10
+datasets==4.4.1
+huggingface_hub==0.35.3
